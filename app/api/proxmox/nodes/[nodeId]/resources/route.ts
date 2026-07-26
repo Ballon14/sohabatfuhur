@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getNodeStatus, getVMs } from "@/lib/proxmox";
+import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +8,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ nodeId: string }> }
 ) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { nodeId } = await params;
 
   try {

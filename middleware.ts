@@ -3,10 +3,16 @@ import { NextResponse } from "next/server";
 
 export default auth((req) => {
   const isLoggedIn = !!req.auth;
-  const isAdminRoute = req.nextUrl.pathname.startsWith("/admin");
-  const isLoginPage = req.nextUrl.pathname === "/admin/login";
+  const { pathname } = req.nextUrl;
+  const isApiRoute = pathname.startsWith("/api");
+  const isLoginPage = pathname === "/admin/login";
+  const isStaticFile = pathname.startsWith("/_next") || pathname.startsWith("/favicon");
 
-  if (isAdminRoute && !isLoggedIn && !isLoginPage) {
+  if (isApiRoute || isStaticFile) {
+    return NextResponse.next();
+  }
+
+  if (!isLoggedIn && !isLoginPage) {
     return NextResponse.redirect(new URL("/admin/login", req.url));
   }
 
@@ -18,5 +24,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

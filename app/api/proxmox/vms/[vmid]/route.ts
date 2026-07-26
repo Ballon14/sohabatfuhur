@@ -5,11 +5,14 @@ import { auth } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ vmid: string }> }
 ) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { vmid } = await params;
-  const searchParams = new URL(_request.url).searchParams;
+  const searchParams = new URL(request.url).searchParams;
   const node = searchParams.get("node");
 
   if (!node) {
