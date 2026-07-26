@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { startVM } from "@/lib/proxmox";
 
 export async function GET(
   _request: Request,
@@ -18,6 +19,7 @@ export async function GET(
         include: {
           pelanggan: true,
           paket: true,
+          vm: true,
         },
       },
       pembayaran: { orderBy: { tanggalBayar: "desc" } },
@@ -40,7 +42,10 @@ export async function POST(
 
   const invoice = await prisma.invoice.findUnique({
     where: { id: Number(id) },
-    include: { pembayaran: true },
+    include: {
+      pembayaran: true,
+      order: { include: { vm: true } },
+    },
   });
 
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
@@ -67,6 +72,30 @@ export async function POST(
     where: { id: Number(id) },
     data: { status: statusBaru },
   });
+
+  if (statusBaru === "lunas") {
+    const order = invoice.order;
+    if (order.status === "suspended") {
+      const newExpired = new Date();
+      newExpired.setMonth(newExpired.getMonth() + 1);
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: "aktif",
+          tanggalExpired: newExpired,
+        },
+      });
+
+      if (order.vm?.vmid && order.vm?.node) {
+        try {
+          await startVM(order.vm.node, order.vm.vmid);
+        } catch {
+          // VM start failure logged but doesn't block payment
+        }
+      }
+    }
+  }
 
   const updated = await prisma.invoice.findUnique({
     where: { id: Number(id) },
