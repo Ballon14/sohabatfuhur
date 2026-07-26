@@ -1,0 +1,105 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
+
+export default function EditPaket() {
+  const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<Record<string, string | number | boolean> | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/paket/${params.id}`)
+      .then((r) => r.json())
+      .then(setData);
+  }, [params.id]);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLoading(true);
+
+    const form = new FormData(e.currentTarget);
+    const body = {
+      nama: form.get("nama"),
+      deskripsi: form.get("deskripsi"),
+      vcpu: Number(form.get("vcpu")),
+      ramMb: Number(form.get("ramMb")),
+      diskGb: Number(form.get("diskGb")),
+      bandwidthTb: Number(form.get("bandwidthTb")),
+      hargaBulanan: Number(form.get("hargaBulanan")),
+      aktif: form.get("aktif") === "true",
+    };
+
+    const res = await fetch(`/api/paket/${params.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    setLoading(false);
+
+    if (res.ok) {
+      router.push("/admin/paket");
+      router.refresh();
+    }
+  }
+
+  if (!data) return <div className="p-8">Memuat...</div>;
+
+  return (
+    <div className="p-8 max-w-2xl mx-auto">
+      <Link href="/admin/paket" className="text-blue-600 hover:underline mb-4 inline-block">
+        &larr; Kembali
+      </Link>
+      <h1 className="text-2xl font-bold mb-6">Edit Paket VPS</h1>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Nama Paket</label>
+          <input name="nama" defaultValue={data.nama as string} required className="w-full px-4 py-2 border rounded-lg" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Deskripsi</label>
+          <textarea name="deskripsi" defaultValue={data.deskripsi as string} rows={3} className="w-full px-4 py-2 border rounded-lg" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">vCPU</label>
+            <input name="vcpu" type="number" defaultValue={data.vcpu as number} min={1} required className="w-full px-4 py-2 border rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">RAM (MB)</label>
+            <input name="ramMb" type="number" defaultValue={data.ramMb as number} min={1} required className="w-full px-4 py-2 border rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Disk (GB)</label>
+            <input name="diskGb" type="number" defaultValue={data.diskGb as number} min={1} required className="w-full px-4 py-2 border rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Bandwidth (TB)</label>
+            <input name="bandwidthTb" type="number" defaultValue={data.bandwidthTb as number} min={1} required className="w-full px-4 py-2 border rounded-lg" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Harga/Bulan (Rp)</label>
+          <input name="hargaBulanan" type="number" defaultValue={data.hargaBulanan as number} min={1} required className="w-full px-4 py-2 border rounded-lg" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Status</label>
+          <select name="aktif" defaultValue={String(data.aktif)} className="w-full px-4 py-2 border rounded-lg">
+            <option value="true">Aktif</option>
+            <option value="false">Nonaktif</option>
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "Menyimpan..." : "Simpan"}
+        </button>
+      </form>
+    </div>
+  );
+}
