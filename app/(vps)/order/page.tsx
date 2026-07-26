@@ -20,7 +20,7 @@ function OrderForm() {
   const [paket, setPaket] = useState<Paket | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState<{ invoiceId: number } | null>(null);
 
   useEffect(() => {
     if (paketId) {
@@ -72,7 +72,9 @@ function OrderForm() {
     setLoading(false);
 
     if (resOrder.ok) {
-      setSuccess(true);
+      const orderData = await resOrder.json();
+      const invoiceId = orderData?.invoice?.[0]?.id || orderData?.invoice?.id;
+      setSuccess({ invoiceId });
     } else {
       const err = await resOrder.json();
       setError(err.error || "Gagal membuat order");
@@ -85,9 +87,19 @@ function OrderForm() {
         <div className="bg-white p-8 rounded-lg shadow-md text-center max-w-md">
           <h1 className="text-2xl font-bold text-green-600 mb-4">Pesanan Berhasil!</h1>
           <p className="text-gray-600 mb-6">Pesanan Anda sedang diproses. Tim kami akan menghubungi Anda segera.</p>
-          <Link href="/katalog" className="text-blue-600 hover:underline">
-            Kembali ke Katalog
-          </Link>
+          {success.invoiceId && (
+            <Link
+              href={`/invoice/${success.invoiceId}`}
+              className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mb-4"
+            >
+              Lihat Invoice
+            </Link>
+          )}
+          <div>
+            <Link href="/katalog" className="text-blue-600 hover:underline text-sm">
+              Kembali ke Katalog
+            </Link>
+          </div>
         </div>
       </div>
     );
