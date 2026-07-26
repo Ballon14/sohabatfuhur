@@ -1,21 +1,74 @@
+import https from "node:https";
+import { URL } from "node:url";
+
 const PROXMOX_HOST = process.env.PROXMOX_HOST!;
 const PROXMOX_TOKEN_ID = process.env.PROXMOX_TOKEN_ID!;
 const PROXMOX_TOKEN_SECRET = process.env.PROXMOX_TOKEN_SECRET!;
 
-interface ProxmoxResponse<T> {
-  data: T;
+async function proxmoxFetch<T>(
+  path: string,
+  options?: { method?: string; body?: string }
+): Promise<T> {
+  const url = new URL(`${PROXMOX_HOST}/api2/json${path}`);
+  const auth = `PVEAPIToken=${PROXMOX_TOKEN_ID}=${PROXMOX_TOKEN_SECRET}`;
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      url,
+      {
+        method: options?.method ?? "GET",
+        headers: {
+          Authorization: auth,
+          ...(options?.body ? { "Content-Type": "application/json" } : {}),
+        },
+        rejectUnauthorized: false,
+        timeout: 10000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString();
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`Proxmox API error: ${res.statusCode} ${res.statusMessage}`));
+            return;
+          }
+          try {
+            const json = JSON.parse(raw);
+            resolve(json.data as T);
+          } catch {
+            reject(new Error("Proxmox API error: invalid JSON response"));
+          }
+        });
+      }
+    );
+
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("Proxmox API error: request timeout"));
+    });
+
+    if (options?.body) req.write(options.body);
+    req.end();
+  });
 }
 
-interface ProxmoxNode {
+interface ProxmoxClusterResource {
+  id: string;
+  type: string;
   node: string;
-  status: string;
-  cpu: number;
-  maxcpu: number;
-  mem: number;
-  maxmem: number;
-  disk: number;
-  maxdisk: number;
-  uptime: number;
+  status?: string;
+  cpu?: number;
+  maxcpu?: number;
+  mem?: number;
+  maxmem?: number;
+  disk?: number;
+  maxdisk?: number;
+  uptime?: number;
+  vmid?: number;
+  name?: string;
+  content?: string;
 }
 
 interface ProxmoxVM {
@@ -59,25 +112,6 @@ interface ProxmoxRRD {
   netout?: number;
   diskwrite?: number;
   diskread?: number;
-}
-
-async function fetchProxmox<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${PROXMOX_HOST}/api2/json${path}`;
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `PVEAPIToken=${PROXMOX_TOKEN_ID}=${PROXMOX_TOKEN_SECRET}`,
-      ...init?.headers,
-    },
-    signal: AbortSignal.timeout(10000),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Proxmox API error: ${res.status} ${res.statusText}`);
-  }
-
-  const json: ProxmoxResponse<T> = await res.json();
-  return json.data;
 }
 
 export interface NodeInfo {
@@ -127,28 +161,52 @@ export interface RRDData {
 }
 
 export async function getNodes(): Promise<NodeInfo[]> {
-  const nodes = await fetchProxmox<ProxmoxNode[]>("/nodes");
-  return nodes.map((n) => ({
-    node: n.node,
-    status: n.status,
-    cpu: n.cpu,
-    maxcpu: n.maxcpu,
-    mem: n.mem,
-    maxmem: n.maxmem,
-    disk: n.disk,
-    maxdisk: n.maxdisk,
-    uptime: n.uptime,
-  }));
+  const resources = await proxmoxFetch<ProxmoxClusterResource[]>("/cluster/resources");
+  return resources
+    .filter((r) => r.type === "node")
+    .map((n) => ({
+      node: n.node,
+      status: n.status ?? "unknown",
+      cpu: n.cpu ?? 0,
+      maxcpu: n.maxcpu ?? 1,
+      mem: n.mem ?? 0,
+      maxmem: n.maxmem ?? 0,
+      disk: n.disk ?? 0,
+      maxdisk: n.maxdisk ?? 0,
+      uptime: n.uptime ?? 0,
+    }));
 }
 
-export async function getNodeStatus(node: string) {
-  return fetchProxmox<NodeInfo>(`/nodes/${node}/status`);
+interface ProxmoxNodeStatus {
+  cpu: number;
+  memory: { used: number; total: number; free: number };
+  swap: { used: number; total: number; free: number };
+  rootfs: { used: number; total: number; avail: number };
+  uptime: number;
+  status?: string;
+  pveversion?: string;
+  kversion?: string;
+}
+
+export async function getNodeStatus(node: string): Promise<NodeInfo> {
+  const data = await proxmoxFetch<ProxmoxNodeStatus>(`/nodes/${node}/status`);
+  return {
+    node,
+    status: data.status ?? "unknown",
+    cpu: data.cpu,
+    maxcpu: 1,
+    mem: data.memory?.used ?? 0,
+    maxmem: data.memory?.total ?? 0,
+    disk: data.rootfs?.used ?? 0,
+    maxdisk: data.rootfs?.total ?? 0,
+    uptime: data.uptime ?? 0,
+  };
 }
 
 export async function getVMs(node: string): Promise<VMInfo[]> {
   const [qemu, lxc] = await Promise.allSettled([
-    fetchProxmox<ProxmoxVM[]>(`/nodes/${node}/qemu`),
-    fetchProxmox<ProxmoxVM[]>(`/nodes/${node}/lxc`),
+    proxmoxFetch<ProxmoxVM[]>(`/nodes/${node}/qemu`),
+    proxmoxFetch<ProxmoxVM[]>(`/nodes/${node}/lxc`),
   ]);
 
   const vms: VMInfo[] = [];
@@ -193,7 +251,7 @@ export async function getVMs(node: string): Promise<VMInfo[]> {
 }
 
 export async function getVMDetail(node: string, vmid: number): Promise<VMDetail> {
-  const detail = await fetchProxmox<ProxmoxVMDetail>(
+  const detail = await proxmoxFetch<ProxmoxVMDetail>(
     `/nodes/${node}/qemu/${vmid}/status/current`
   );
   return {
@@ -214,7 +272,7 @@ export async function getVMResourceHistory(
   vmid: number,
   timeframe: "hour" | "day" | "week" = "hour"
 ): Promise<RRDData[]> {
-  const data = await fetchProxmox<ProxmoxRRD[]>(
+  const data = await proxmoxFetch<ProxmoxRRD[]>(
     `/nodes/${node}/qemu/${vmid}/rrddata?timeframe=${timeframe}`
   );
   return data.map((d) => ({
@@ -227,19 +285,78 @@ export async function getVMResourceHistory(
 }
 
 export async function startVM(node: string, vmid: number): Promise<void> {
-  await fetchProxmox(`/nodes/${node}/qemu/${vmid}/status/start`, {
+  await proxmoxFetch(`/nodes/${node}/qemu/${vmid}/status/start`, {
     method: "POST",
   });
 }
 
 export async function stopVM(node: string, vmid: number): Promise<void> {
-  await fetchProxmox(`/nodes/${node}/qemu/${vmid}/status/stop`, {
+  await proxmoxFetch(`/nodes/${node}/qemu/${vmid}/status/stop`, {
     method: "POST",
   });
 }
 
 export async function rebootVM(node: string, vmid: number): Promise<void> {
-  await fetchProxmox(`/nodes/${node}/qemu/${vmid}/status/reboot`, {
+  await proxmoxFetch(`/nodes/${node}/qemu/${vmid}/status/reboot`, {
     method: "POST",
   });
+}
+
+export async function getNextVMID(): Promise<number> {
+  const data = await proxmoxFetch<{ data?: string }>("/cluster/nextid");
+  return Number(data);
+}
+
+export async function cloneVM(
+  node: string,
+  templateVmid: number,
+  newVmid: number,
+  name: string
+): Promise<string> {
+  const data = await proxmoxFetch<{ data?: string }>(
+    `/nodes/${node}/qemu/${templateVmid}/clone`,
+    {
+      method: "POST",
+      body: JSON.stringify({ newid: newVmid, name }),
+    }
+  );
+  return String(data ?? "");
+}
+
+export async function setVMConfig(
+  node: string,
+  vmid: number,
+  config: { cores?: number; memory?: number; description?: string }
+): Promise<void> {
+  await proxmoxFetch(`/nodes/${node}/qemu/${vmid}/config`, {
+    method: "PUT",
+    body: JSON.stringify(config),
+  });
+}
+
+export async function resizeDisk(
+  node: string,
+  vmid: number,
+  diskSizeGb: number
+): Promise<void> {
+  await proxmoxFetch(`/nodes/${node}/qemu/${vmid}/resize`, {
+    method: "PUT",
+    body: JSON.stringify({ disk: "virtio0", size: `${diskSizeGb}G` }),
+  });
+}
+
+export async function waitForTask(node: string, upid: string): Promise<void> {
+  const poll = async (): Promise<void> => {
+    const data = await proxmoxFetch<{ status: string; exitstatus?: string }>(
+      `/nodes/${node}/tasks/${encodeURIComponent(upid)}/status`
+    );
+    if (data.status === "running") {
+      await new Promise((r) => setTimeout(r, 2000));
+      return poll();
+    }
+    if (data.exitstatus !== "OK") {
+      throw new Error(`Task failed: ${data.exitstatus}`);
+    }
+  };
+  await poll();
 }

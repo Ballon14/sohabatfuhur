@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { getNextVMID, cloneVM, setVMConfig, startVM } from "@/lib/proxmox";
 
 export async function GET() {
   const session = await auth();
@@ -12,6 +13,7 @@ export async function GET() {
       pelanggan: true,
       paket: true,
       invoice: true,
+      vm: true,
     },
   });
   return NextResponse.json(orders);
@@ -58,9 +60,40 @@ export async function POST(request: Request) {
     },
   });
 
+  const node = process.env.PROXMOX_NODE;
+  const templateVmid = Number(process.env.PROXMOX_TEMPLATE_VMID);
+  if (node && templateVmid) {
+    try {
+      const vmName = `vps-${order.id}-${paket.nama.toLowerCase().replace(/\s+/g, "-")}`;
+      const newVmid = await getNextVMID();
+      await cloneVM(node, templateVmid, newVmid, vmName);
+      await setVMConfig(node, newVmid, {
+        cores: paket.vcpu,
+        memory: paket.ramMb,
+        description: `Order #${order.id} - ${paket.nama}`,
+      });
+      await startVM(node, newVmid);
+
+      await prisma.vMProxmox.create({
+        data: {
+          orderId: order.id,
+          vmid: newVmid,
+          node,
+          nama: vmName,
+          status: "running",
+          cpuCores: paket.vcpu,
+          ramMb: paket.ramMb,
+          diskGb: paket.diskGb,
+        },
+      });
+    } catch {
+      // VM creation failed silently - admin can create manually later
+    }
+  }
+
   const result = await prisma.order.findUnique({
     where: { id: order.id },
-    include: { invoice: true, paket: true, pelanggan: true },
+    include: { invoice: true, paket: true, pelanggan: true, vm: true },
   });
 
   return NextResponse.json(result, { status: 201 });
