@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id           Int            @id @default(autoincrement())
+  username     String         @unique @db.VarChar(50)
+  email        String         @unique @db.VarChar(100)
+  passwordHash String         @map("password_hash") @db.VarChar(255)
+  role         String         @default("admin") @db.VarChar(20)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  aktivitasLog AktivitasLog[]
+
+  @@map("admin")
+}
+
+model Pelanggan {
+  id        Int      @id @default(autoincrement())
+  nama      String   @db.VarChar(100)
+  email     String   @unique @db.VarChar(100)
+  noTelp    String?  @map("no_telp") @db.VarChar(20)
+  alamat    String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  order     Order[]
+
+  @@map("pelanggan")
+}
+
+model PaketVPS {
+  id           Int      @id @default(autoincrement())
+  nama         String   @db.VarChar(100)
+  deskripsi    String?  @db.Text
+  vcpu         Int
+  ramMb        Int      @map("ram_mb")
+  diskGb       Int      @map("disk_gb")
+  bandwidthTb  Int      @map("bandwidth_tb")
+  hargaBulanan Decimal  @map("harga_bulanan") @db.Decimal(12, 2)
+  aktif        Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  order        Order[]
+
+  @@map("paket_vps")
+}
+
+model Order {
+  id             Int        @id @default(autoincrement())
+  pelangganId    Int        @map("pelanggan_id")
+  paketId        Int        @map("paket_id")
+  vmId           Int?       @unique @map("vm_id")
+  status         String     @default("aktif") @db.VarChar(20)
+  tanggalMulai   DateTime   @default(now()) @map("tanggal_mulai")
+  tanggalExpired DateTime   @map("tanggal_expired")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  pelanggan Pelanggan  @relation(fields: [pelangganId], references: [id])
+  paket     PaketVPS   @relation(fields: [paketId], references: [id])
+  vm        VMProxmox? @relation(fields: [vmId], references: [id])
+  invoice   Invoice[]
+
+  @@map("order")
+}
+
+model VMProxmox {
+  id              Int       @id @default(autoincrement())
+  orderId         Int       @unique @map("order_id")
+  vmid            Int
+  node            String    @db.VarChar(50)
+  nama            String    @db.VarChar(100)
+  ipAddress       String?   @map("ip_address") @db.VarChar(45)
+  status          String    @default("stopped") @db.VarChar(20)
+  cpuCores        Int       @map("cpu_cores")
+  ramMb           Int       @map("ram_mb")
+  diskGb          Int       @map("disk_gb")
+  resourceHistory Json?     @map("resource_history")
+  lastSync        DateTime? @map("last_sync")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  order Order?
+
+  @@map("vm_proxmox")
+}
+
+model Invoice {
+  id                Int         @id @default(autoincrement())
+  orderId           Int         @map("order_id")
+  nomorInvoice      String      @unique @map("nomor_invoice") @db.VarChar(50)
+  jumlah            Decimal     @db.Decimal(12, 2)
+  status            String      @default("belum_dibayar") @db.VarChar(20)
+  tanggalTerbit     DateTime    @default(now()) @map("tanggal_terbit")
+  tanggalJatuhTempo DateTime    @map("tanggal_jatuh_tempo")
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  order     Order       @relation(fields: [orderId], references: [id])
+  pembayaran Pembayaran[]
+
+  @@map("invoice")
+}
+
+model Pembayaran {
+  id            Int      @id @default(autoincrement())
+  invoiceId     Int      @map("invoice_id")
+  jumlahDibayar Decimal  @map("jumlah_dibayar") @db.Decimal(12, 2)
+  metode        String   @db.VarChar(30)
+  referensi     String?  @db.VarChar(100)
+  tanggalBayar  DateTime @default(now()) @map("tanggal_bayar")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("pembayaran")
+}
+
+model AktivitasLog {
+  id         Int      @id @default(autoincrement())
+  adminId    Int      @map("admin_id")
+  aksi       String   @db.VarChar(50)
+  targetType String   @map("target_type") @db.VarChar(50)
+  targetId   Int      @map("target_id")
+  detail     String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  admin Admin @relation(fields: [adminId], references: [id])
+
+  @@map("aktivitas_log")
+}
