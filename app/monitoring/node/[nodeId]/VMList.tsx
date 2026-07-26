@@ -40,7 +40,7 @@ export function VMList({ node, vms }: VMListProps) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {vms.map((vm) => (
             <div key={vm.vmid} className={loading === vm.vmid ? "opacity-50 pointer-events-none" : ""}>
-              <VMCard {...vm} onAction={handleAction} />
+              <VMCard node={node} {...vm} onAction={handleAction} />
             </div>
           ))}
         </div>

@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { ResourceGauge } from "./ResourceGauge";
 
 interface VMCardProps {
+  node: string;
   vmid: number;
   name: string;
   status: string;
@@ -29,6 +31,7 @@ function formatUptime(seconds: number): string {
 }
 
 export function VMCard({
+  node,
   vmid,
   name,
   status,
@@ -53,7 +56,9 @@ export function VMCard({
       <div className="flex justify-between items-start mb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold">{name}</h3>
+            <Link href={`/monitoring/node/${node}/${vmid}`} className="font-semibold hover:text-blue-600">
+              {name}
+            </Link>
             <span className="text-xs text-gray-400">({type.toUpperCase()})</span>
           </div>
           <p className="text-xs text-gray-500">VMID: {vmid}</p>

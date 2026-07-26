@@ -1,9 +1,12 @@
+const THRESHOLD_WARNING = 75;
+const THRESHOLD_CRITICAL = 90;
+
 interface ResourceGaugeProps {
   label: string;
   used: number;
   total: number;
   unit: string;
-  color?: "blue" | "green" | "yellow" | "red";
+  showAlert?: boolean;
 }
 
 const colorMap = {
@@ -14,9 +17,9 @@ const colorMap = {
 };
 
 function getColor(percent: number) {
-  if (percent >= 90) return "red";
-  if (percent >= 75) return "yellow";
-  if (percent >= 50) return "green";
+  if (percent >= THRESHOLD_CRITICAL / 100) return "red";
+  if (percent >= THRESHOLD_WARNING / 100) return "yellow";
+  if (percent >= 0.5) return "green";
   return "blue";
 }
 
@@ -29,13 +32,23 @@ function formatValue(value: number, unit: string): string {
   return `${value} ${unit}`;
 }
 
-export function ResourceGauge({ label, used, total, unit }: ResourceGaugeProps) {
+export function ResourceGauge({ label, used, total, unit, showAlert }: ResourceGaugeProps) {
   const percent = total > 0 ? used / total : 0;
   const color = getColor(percent);
+  const isWarning = percent >= THRESHOLD_WARNING / 100;
+  const isCritical = percent >= THRESHOLD_CRITICAL / 100;
 
   return (
-    <div className="bg-white rounded-lg p-4 shadow-sm">
-      <p className="text-sm text-gray-500 mb-1">{label}</p>
+    <div className={`bg-white rounded-lg p-4 shadow-sm ${isCritical ? "ring-2 ring-red-300" : isWarning ? "ring-2 ring-yellow-300" : ""}`}>
+      <div className="flex justify-between items-center mb-1">
+        <p className="text-sm text-gray-500">{label}</p>
+        {showAlert && isCritical && (
+          <span className="text-xs text-red-600 font-medium">CRITICAL</span>
+        )}
+        {showAlert && isWarning && !isCritical && (
+          <span className="text-xs text-yellow-600 font-medium">WARNING</span>
+        )}
+      </div>
       <div className="flex justify-between items-baseline mb-2">
         <span className="text-lg font-bold">
           {formatValue(used, unit)}

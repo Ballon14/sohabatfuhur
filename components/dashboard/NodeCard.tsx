@@ -69,18 +69,21 @@ export function NodeCard({
             used={cpu}
             total={maxcpu}
             unit="%"
+            showAlert
           />
           <ResourceGauge
             label="RAM"
             used={mem}
             total={maxmem}
             unit="MB"
+            showAlert
           />
           <ResourceGauge
             label="Disk"
             used={disk}
             total={maxdisk}
             unit="GB"
+            showAlert
           />
         </div>
       </div>
