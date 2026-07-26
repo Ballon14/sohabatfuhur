@@ -18,7 +18,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <NavItem href="/admin/invoice" label="Invoice" />
         </nav>
         <div className="p-4 border-t border-gray-700">
-          <Link href="/" className="text-sm text-gray-400 hover:text-white block">
+          <Link href="/monitoring" className="text-sm text-gray-400 hover:text-white block">
             &larr; Ke Website
           </Link>
         </div>

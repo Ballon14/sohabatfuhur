@@ -46,7 +46,7 @@ export default async function AdminDashboard() {
             <p className="text-gray-600">Kelola invoice & pembayaran</p>
           </Link>
           <Link
-            href="/"
+            href="/monitoring"
             className="p-6 bg-white rounded-lg shadow hover:shadow-md transition"
           >
             <h2 className="text-xl font-semibold mb-2">Monitoring</h2>
